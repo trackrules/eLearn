@@ -51,7 +51,7 @@ Run these commands in order after the stack is up.
 docker compose exec backend python -m app.cli crawl
 ```
 
-The crawler starts at `https://4cardata.info/elearn/186/`, follows only URLs under `/elearn/186`, stores raw HTML and parsed data, records links/images, and downloads images into the backend storage volume where practical.
+The crawler starts at `https://4cardata.info/elearn/186/2/`, follows only URLs under `/elearn/186`, stores raw HTML and parsed data, records links/images, and downloads Multipla diagram images into the backend storage volume.
 
 Useful crawler environment variables in `docker-compose.yml`:
 

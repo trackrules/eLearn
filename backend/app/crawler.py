@@ -5,15 +5,20 @@ import httpx
 from bs4 import BeautifulSoup
 from .db import get_conn
 
-ROOT = "https://4cardata.info/elearn/186/"
+ROOT = "https://4cardata.info/elearn/186/2/"
 RATE = float(os.getenv("CRAWL_RATE_SECONDS", "1.0"))
 IMG_DIR = os.getenv("IMAGE_STORAGE_DIR", "storage/images")
+PUBLIC_IMAGE_PATH = os.getenv("PUBLIC_IMAGE_PATH", "/storage/images")
 MAX_PAGES = int(os.getenv("CRAWL_MAX_PAGES", "0"))
 
 
 def is_multipla_url(url):
     p = urlparse(url)
-    return p.netloc == "4cardata.info" and "/elearn/186" in p.path
+    return p.netloc == "4cardata.info" and (p.path == "/elearn/186" or p.path.startswith("/elearn/186/"))
+
+def is_multipla_image(url):
+    p = urlparse(url)
+    return p.netloc == "4cardata.info" and p.path.startswith("/image/schemes/fiat/")
 
 def source_id(url):
     qs = parse_qs(urlparse(url).query)
@@ -86,16 +91,24 @@ def crawl(download_images=True):
                     src = img.get("src")
                     if not src: continue
                     iu = urljoin(str(r.url), src)
+                    if not is_multipla_image(iu): continue
                     local = None
-                    if download_images and (is_multipla_url(iu) or "/elearn/186" in urlparse(iu).path):
+                    if download_images:
                         ext = os.path.splitext(urlparse(iu).path)[1] or ".img"
                         fn = hashlib.sha1(iu.encode()).hexdigest()+ext
-                        local = os.path.join(IMG_DIR, fn)
-                        if not os.path.exists(local):
+                        storage_path = os.path.join(IMG_DIR, fn)
+                        local = f"{PUBLIC_IMAGE_PATH.rstrip('/')}/{fn}"
+                        if not os.path.exists(storage_path):
                             try:
-                                ir = client.get(iu); ir.raise_for_status(); open(local,"wb").write(ir.content); stats["images"] += 1
+                                ir = client.get(iu); ir.raise_for_status(); open(storage_path,"wb").write(ir.content); stats["images"] += 1
                             except Exception as e: stats["failed_urls"].append({"url": iu, "error": str(e)})
-                    conn.execute("INSERT INTO elearn_images(elearn_page_id,image_url,local_path,alt_text) VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING", (pid, iu, local, img.get("alt")))
+                    conn.execute("""
+                        INSERT INTO elearn_images(elearn_page_id,image_url,local_path,alt_text)
+                        VALUES(%s,%s,%s,%s)
+                        ON CONFLICT (elearn_page_id, image_url) DO UPDATE
+                        SET local_path=COALESCE(EXCLUDED.local_path, elearn_images.local_path),
+                            alt_text=COALESCE(EXCLUDED.alt_text, elearn_images.alt_text)
+                    """, (pid, iu, local, img.get("alt")))
                 for a in soup.find_all("a", href=True):
                     to = urljoin(str(r.url), a["href"]).split("#",1)[0]
                     txt = a.get_text(" ", strip=True)
