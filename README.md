@@ -53,6 +53,14 @@ docker compose exec backend python -m app.cli crawl
 
 The crawler starts at `https://4cardata.info/elearn/186/2/`, follows only URLs under `/elearn/186`, stores raw HTML and parsed data, records links/images, and downloads Multipla diagram images into the backend storage volume.
 
+To resume only unresolved child pages with a per-run safety limit:
+
+```bash
+docker compose exec backend python -m app.crawler --resume-pending --limit 500
+```
+
+Resume runs prioritize known child URLs, include newly discovered children in the same run, and persist run statistics, failed page/image URLs, and skipped URLs in `crawl_runs` and `crawl_url_events`.
+
 Useful crawler environment variables in `docker-compose.yml`:
 
 - `CRAWL_RATE_SECONDS` controls the polite delay between page requests.

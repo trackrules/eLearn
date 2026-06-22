@@ -41,6 +41,14 @@ IGNITION_MENU_HTML = """
 </ul></div></body></html>
 """
 
+LIST_WITH_SITE_CHROME_HTML = """
+<html><body><nav>4CarData eLearn Contact</nav><div id="mainContainer">
+  <div class="col-lg"><form>English production search</form><ol class="breadcrumb"><li>FIAT</li></ol>
+    <ul class="list-group"><li><a href="/elearn/186/2/child">Child article</a></li></ul>
+  </div>
+</div></body></html>
+"""
+
 
 class CrawlerExtractionTests(unittest.TestCase):
     def test_article_text_uses_content_region_and_preserves_leaf_blocks(self):
@@ -80,6 +88,10 @@ class CrawlerExtractionTests(unittest.TestCase):
             canonical_url("http://4cardata.info/elearn/186/2/example#section"),
             "https://4cardata.info/elearn/186/2/example",
         )
+
+    def test_list_page_text_excludes_site_chrome(self):
+        text = text_of(BeautifulSoup(LIST_WITH_SITE_CHROME_HTML, "html.parser"))
+        self.assertEqual(text, "Child article")
 
 
 if __name__ == "__main__":

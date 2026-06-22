@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from contextlib import contextmanager
 import psycopg
 from psycopg.rows import dict_row
@@ -22,3 +23,10 @@ def run_sql_file(path: str) -> None:
         sql = f.read()
     with get_conn() as conn:
         conn.execute(sql)
+
+def run_migrations(directory: str = "migrations") -> list[str]:
+    applied = []
+    for path in sorted(Path(directory).glob("*.sql")):
+        run_sql_file(str(path))
+        applied.append(path.name)
+    return applied

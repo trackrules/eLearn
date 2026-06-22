@@ -46,16 +46,18 @@ def elearn_page(page_id: int):
         child_pages = conn.execute("""
             SELECT id, title, source_url, breadcrumb, category
             FROM elearn_pages WHERE parent_page_id=%s
+            UNION
+            SELECT p.id, p.title, p.source_url, p.breadcrumb, p.category
+            FROM elearn_links l JOIN elearn_pages p ON p.id=l.discovered_page_id
+            WHERE l.from_page_id=%s AND l.link_type='child'
             ORDER BY title
-        """, (page_id,)).fetchall()
-        source_child_prefix = page["source_url"].rsplit("/", 1)[0] + "/%"
+        """, (page_id, page_id)).fetchall()
         source_child_links = conn.execute("""
             SELECT link_text, to_url AS source_url
             FROM elearn_links
-            WHERE from_page_id=%s AND discovered_page_id IS NULL
-              AND regexp_replace(to_url, '^http:', 'https:') LIKE %s
+            WHERE from_page_id=%s AND link_type='child' AND discovered_page_id IS NULL
             ORDER BY link_text
-        """, (page_id, source_child_prefix)).fetchall()
+        """, (page_id,)).fetchall()
         return {
             "page": page,
             "images": images,
