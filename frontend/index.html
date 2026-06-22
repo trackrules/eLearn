@@ -1,1 +1,34 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fiat Multipla eLearn MVP</title><link rel="stylesheet" href="/styles.css"></head><body><header><a href="/">eLearn MVP</a><nav><a href="/vehicles/fiat-multipla">Multipla</a><a href="/search">Search</a><a href="/components">Components</a></nav></header><main id="app"></main><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Search and browse the imported Fiat Multipla eLearn workshop manual.">
+  <meta name="theme-color" content="#0b0f14">
+  <title>Multipla Workshop Library</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="Multipla Workshop Library home">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span><strong>Multipla</strong><small>Workshop Library</small></span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a data-nav="vehicle" href="/vehicles/fiat-multipla">Vehicle</a>
+        <a data-nav="search" href="/search">Search</a>
+        <a data-nav="components" href="/components">Components</a>
+      </nav>
+    </div>
+  </header>
+  <main id="app" tabindex="-1">
+    <div class="loading-state"><span class="spinner" aria-hidden="true"></span>Loading workshop data…</div>
+  </main>
+  <footer class="site-footer">
+    <span>Phase 2A · Fiat Multipla eLearn</span>
+    <span>Source material retained with original links</span>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>
