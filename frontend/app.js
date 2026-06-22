@@ -17,7 +17,7 @@ function setTitle(title) {
 
 function setActiveNav() {
   const path = location.pathname;
-  const active = path.startsWith('/components') ? 'components' : path.startsWith('/search') ? 'search' : path.startsWith('/vehicles') || path.startsWith('/elearn') ? 'vehicle' : '';
+  const active = path.startsWith('/components') ? 'components' : path.startsWith('/search') ? 'search' : path.startsWith('/manual') ? 'manual' : path.startsWith('/vehicles') || path.startsWith('/elearn') ? 'vehicle' : '';
   document.querySelectorAll('[data-nav]').forEach(link => link.classList.toggle('active', link.dataset.nav === active));
 }
 
@@ -93,7 +93,7 @@ async function home() {
     <p class="eyebrow">Phase 2A workshop archive</p>
     <h1>Fiat Multipla technical information, made searchable.</h1>
     <p class="lead">Browse the complete imported eLearn manual, follow its original hierarchy, inspect diagrams, or jump directly to component-related procedures.</p>
-    <div class="header-actions"><a class="button" href="/search">Search the manual</a><a class="button secondary" href="/components">Browse components</a></div>
+    <div class="header-actions"><a class="button" href="/manual/fiat-multipla">Browse the manual</a><a class="button secondary" href="/search">Search the manual</a><a class="button secondary" href="/components">Browse components</a></div>
   </section>
   <section class="stats-grid" aria-label="Library statistics">
     <div class="stat"><strong>${number(vehicle.stats.pages)}</strong><span>eLearn pages</span></div>
@@ -103,6 +103,7 @@ async function home() {
   <section><div class="page-header compact"><p class="eyebrow">Start exploring</p><h2>Workshop library</h2></div>
     <div class="grid">
       <a class="card" href="/vehicles/fiat-multipla"><h3>Fiat Multipla overview</h3><p class="muted">Vehicle identity, import coverage, and entry points into the manual.</p></a>
+      <a class="card" href="/manual/fiat-multipla"><h3>eLearn manual tree</h3><p class="muted">Follow the original engine, section, category, index, and article hierarchy.</p></a>
       <a class="card" href="/search"><h3>Full-text eLearn search</h3><p class="muted">Find procedures, descriptions, diagnostics, technical data, and wiring pages.</p></a>
       <a class="card" href="/components"><h3>Component index</h3><p class="muted">Use familiar component names and aliases to reach matched eLearn pages.</p></a>
     </div>
@@ -120,9 +121,48 @@ async function vehicle() {
       <div class="stat"><strong>${number(data.stats.components)}</strong><span>Matched components</span></div>
     </section>
     <section class="card"><p class="eyebrow">Use the library</p><h2>Choose an entry point</h2><div class="grid">
+      <a class="card" href="/manual/fiat-multipla"><h3>Browse the original manual tree</h3><p class="muted">Navigate by engine, section, workshop category, index, and article.</p></a>
       <a class="card" href="/search"><h3>Search all eLearn pages</h3><p class="muted">Search titles, breadcrumbs, categories, and extracted article content.</p></a>
       <a class="card" href="/components"><h3>Browse component matches</h3><p class="muted">Start with a component and see its related workshop pages and diagrams.</p></a>
     </div></section>`;
+}
+
+function manualPageNode(node) {
+  const meta = `${node.relation ? 'Related description · ' : ''}${node.kind === 'index' ? `${number(node.child_count)} subpages` : 'Article'}${node.image_count ? ` · ${number(node.image_count)} image${node.image_count === 1 ? '' : 's'}` : ''}`;
+  if (!node.children?.length) return `<a class="manual-leaf" href="/elearn/${node.id}"><span>${esc(node.title)}</span><small>${esc(meta)}</small></a>`;
+  return `<details class="manual-page-node"><summary><span class="manual-node-heading"><a class="manual-node-link" href="/elearn/${node.id}">${esc(node.title)}</a><small>${esc(meta)}</small></span></summary><div class="manual-children">${node.children.map(manualPageNode).join('')}</div></details>`;
+}
+
+function manualEngine(engine) {
+  return `<div class="manual-tree" data-engine-tree="${esc(engine.title)}">${engine.sections.map(section => `<details class="manual-group manual-section"><summary><span><strong>${esc(section.title)}</strong><small>${number(section.page_count)} pages</small></span></summary><div class="manual-group-body">${section.categories.map(category => `<details class="manual-group manual-category"><summary><span><strong>${esc(category.title)}</strong><small>${number(category.page_count)} pages</small></span></summary><div class="manual-pages">${category.pages.map(manualPageNode).join('')}</div></details>`).join('')}</div></details>`).join('')}</div>`;
+}
+
+async function manual() {
+  setTitle('Manual');
+  app.innerHTML = `${breadcrumb([{ label: 'Home', href: '/' }, { label: 'Manual' }])}
+    <header class="page-header"><p class="eyebrow">Original workshop navigation</p><h1>eLearn manual browser</h1><p class="lead">Browse the imported workshop manual through its original vehicle and document hierarchy, alongside the modern search and component workflows.</p></header>
+    <div class="grid"><a class="card" href="/manual/fiat-multipla"><h2>Fiat Multipla</h2><p class="muted">Choose an engine variant, then browse sections, categories, indexes, and articles.</p></a></div>`;
+}
+
+async function manualMultipla() {
+  const data = await api('/manual/fiat-multipla/tree');
+  setTitle('Fiat Multipla manual');
+  app.innerHTML = `${breadcrumb([{ label: 'Home', href: '/' }, { label: 'Manual', href: '/manual' }, { label: 'Fiat Multipla' }])}
+    <header class="page-header compact"><p class="eyebrow">${number(data.page_count)} imported manual pages</p><h1>Fiat Multipla eLearn manual</h1><p class="lead">Switch engine variants and expand the original workshop sections. Index pages remain directly accessible while exposing their imported child articles.</p></header>
+    <div class="engine-switch" role="tablist" aria-label="Engine variant">${data.engines.map((engine, index) => `<button class="engine-tab${index ? '' : ' active'}" type="button" role="tab" aria-selected="${index ? 'false' : 'true'}" data-engine="${esc(engine.title)}"><strong>${esc(engine.title)}</strong><small>${number(engine.page_count)} pages</small></button>`).join('')}</div>
+    <div id="manual-tree-container">${manualEngine(data.engines[0])}</div>`;
+  const container = document.getElementById('manual-tree-container');
+  document.querySelectorAll('.engine-tab').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('.engine-tab').forEach(tab => { tab.classList.toggle('active', tab === button); tab.setAttribute('aria-selected', tab === button ? 'true' : 'false'); });
+    const engine = data.engines.find(item => item.title === button.dataset.engine);
+    container.innerHTML = manualEngine(engine);
+    bindManualLinks();
+  }));
+  bindManualLinks();
+}
+
+function bindManualLinks() {
+  document.querySelectorAll('.manual-node-link').forEach(link => link.addEventListener('click', event => event.stopPropagation()));
 }
 
 async function search() {
@@ -198,6 +238,8 @@ async function route() {
   const path = location.pathname;
   if (path === '/') return home();
   if (path === '/vehicles/fiat-multipla') return vehicle();
+  if (path === '/manual') return manual();
+  if (path === '/manual/fiat-multipla') return manualMultipla();
   if (path === '/search') return search();
   if (path === '/components') return components();
   if (path.startsWith('/components/')) return component(path.split('/').filter(Boolean).pop());

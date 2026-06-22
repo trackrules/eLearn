@@ -106,6 +106,8 @@ The matcher performs simple keyword matching across page title, breadcrumb, and 
 
 - `/` overview
 - `/vehicles/fiat-multipla` vehicle status and import counts
+- `/manual` manual browser entry point
+- `/manual/fiat-multipla` engine/section/category eLearn tree
 - `/search` Meilisearch-backed eLearn search
 - `/elearn/:id` imported eLearn page viewer with source URL, parsed text, and images
 - `/components` seeded component list
@@ -115,6 +117,7 @@ The matcher performs simple keyword matching across page title, breadcrumb, and 
 
 - `GET /api/vehicles`
 - `GET /api/vehicles/fiat-multipla`
+- `GET /api/manual/fiat-multipla/tree`
 - `GET /api/search?q=radiator%20fan`
 - `GET /api/elearn/{id}`
 - `GET /api/components`

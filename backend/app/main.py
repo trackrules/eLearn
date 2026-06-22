@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .db import get_conn
 from .search import search_pages
+from .manual import multipla_manual_tree
 
 app = FastAPI(title="Fiat Multipla eLearn MVP")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -34,6 +35,11 @@ def multipla():
 @app.get("/api/search")
 def api_search(q: str = Query("", min_length=0), limit: int = 20):
     return search_pages(q, limit)
+
+@app.get("/api/manual/fiat-multipla/tree")
+@app.get("/manual/fiat-multipla/tree")
+def manual_tree():
+    return multipla_manual_tree()
 
 @app.get("/api/elearn/{page_id}")
 def elearn_page(page_id: int):
