@@ -20,18 +20,49 @@ def is_multipla_image(url):
     p = urlparse(url)
     return p.netloc == "4cardata.info" and p.path.startswith("/image/schemes/fiat/")
 
+def canonical_url(url):
+    parsed = urlparse(url)
+    if parsed.netloc == "4cardata.info":
+        parsed = parsed._replace(scheme="https")
+    return parsed._replace(fragment="").geturl()
+
 def source_id(url):
     qs = parse_qs(urlparse(url).query)
     return qs.get("id", [None])[0] or os.path.basename(urlparse(url).path) or None
 
+def content_node(soup):
+    heading = soup.find("h3")
+    if heading and heading.parent:
+        return heading.parent
+    menu = soup.select_one(".list-group")
+    if menu:
+        return menu
+    for selector in ("article", "main", ".col-lg", "#mainContainer"):
+        node = soup.select_one(selector)
+        if node:
+            return node
+    return soup
+
+def menu_child_links(soup, page_url):
+    links = []
+    for anchor in soup.select(".list-group a[href]"):
+        url = canonical_url(urljoin(page_url, anchor["href"]))
+        if is_multipla_url(url):
+            links.append(url)
+    return links
+
 def text_of(soup):
-    for tag in soup(["script", "style", "nav"]):
-        tag.decompose()
-    return re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).strip()
+    root = content_node(soup)
+    lines = []
+    for text in root.stripped_strings:
+        line = re.sub(r"\s+", " ", text).strip()
+        if line and (not lines or lines[-1] != line):
+            lines.append(line)
+    return "\n".join(lines)
 
 def tables(soup):
     out = []
-    for table in soup.find_all("table"):
+    for table in content_node(soup).find_all("table"):
         rows = []
         for tr in table.find_all("tr"):
             cells = [c.get_text(" ", strip=True) for c in tr.find_all(["th", "td"])]
@@ -73,10 +104,11 @@ def crawl(download_images=True):
     with get_conn() as conn:
         v = conn.execute("SELECT id FROM vehicles WHERE source_code='186'").fetchone() or conn.execute("INSERT INTO vehicles(make,model,source_code) VALUES('Fiat','Multipla','186') RETURNING id").fetchone()
         vehicle_id = v["id"]
-    q, seen = deque([(ROOT, None)]), set()
+    q, seen = deque([(canonical_url(ROOT), None)]), set()
     with httpx.Client(timeout=30, headers={"User-Agent":"eLearn Phase2A research crawler (polite; contact local developer)"}, follow_redirects=True) as client:
         while q and (not MAX_PAGES or stats["pages"] < MAX_PAGES):
             url, parent = q.popleft()
+            url = canonical_url(url)
             if url in seen or not is_multipla_url(url): continue
             seen.add(url)
             try:
@@ -86,8 +118,14 @@ def crawl(download_images=True):
                 stats["failed_urls"].append({"url": url, "error": str(e)}); continue
             soup = BeautifulSoup(html, "html.parser")
             with get_conn() as conn:
-                pid = upsert_page(conn, vehicle_id, str(r.url), html, soup, parent)
-                for img in soup.find_all("img"):
+                page_url = canonical_url(str(r.url))
+                pid = upsert_page(conn, vehicle_id, page_url, html, soup, parent)
+                conn.execute("""
+                    UPDATE elearn_links SET discovered_page_id=%s
+                    WHERE regexp_replace(to_url, '^http:', 'https:')=%s
+                """, (pid, page_url))
+                root = content_node(soup)
+                for img in root.find_all("img"):
                     src = img.get("src")
                     if not src: continue
                     iu = urljoin(str(r.url), src)
@@ -109,11 +147,31 @@ def crawl(download_images=True):
                         SET local_path=COALESCE(EXCLUDED.local_path, elearn_images.local_path),
                             alt_text=COALESCE(EXCLUDED.alt_text, elearn_images.alt_text)
                     """, (pid, iu, local, img.get("alt")))
+                priority_urls = menu_child_links(soup, page_url)
+                regular_urls = []
                 for a in soup.find_all("a", href=True):
-                    to = urljoin(str(r.url), a["href"]).split("#",1)[0]
+                    to = canonical_url(urljoin(page_url, a["href"]))
                     txt = a.get_text(" ", strip=True)
-                    conn.execute("INSERT INTO elearn_links(from_page_id,to_url,link_text) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING", (pid, to, txt))
-                    if is_multipla_url(to) and to not in seen: q.append((to, pid))
+                    child = conn.execute("SELECT id FROM elearn_pages WHERE source_url=%s", (to,)).fetchone()
+                    child_id = child["id"] if child else None
+                    conn.execute("""
+                        INSERT INTO elearn_links(from_page_id,to_url,link_text,discovered_page_id)
+                        VALUES(%s,%s,%s,%s)
+                        ON CONFLICT (from_page_id,to_url) DO UPDATE
+                        SET link_text=EXCLUDED.link_text,
+                            discovered_page_id=COALESCE(EXCLUDED.discovered_page_id, elearn_links.discovered_page_id)
+                    """, (pid, to, txt, child_id))
+                    if child_id:
+                        conn.execute("""
+                            UPDATE elearn_links SET discovered_page_id=%s
+                            WHERE from_page_id=%s AND regexp_replace(to_url, '^http:', 'https:')=%s
+                        """, (child_id, pid, to))
+                        if to in priority_urls:
+                            conn.execute("UPDATE elearn_pages SET parent_page_id=%s WHERE id=%s", (pid, child_id))
+                    if is_multipla_url(to) and to not in seen and to not in priority_urls:
+                        regular_urls.append(to)
+                q.extendleft((to, pid) for to in reversed(priority_urls) if to not in seen)
+                q.extend((to, None) for to in regular_urls)
             stats["pages"] += 1
             print(f"crawled {stats['pages']}: {url}")
             time.sleep(RATE)

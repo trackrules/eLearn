@@ -43,7 +43,26 @@ def elearn_page(page_id: int):
             raise HTTPException(404, "Page not found")
         images = conn.execute("SELECT * FROM elearn_images WHERE elearn_page_id=%s ORDER BY id", (page_id,)).fetchall()
         links = conn.execute("SELECT * FROM elearn_links WHERE from_page_id=%s ORDER BY id", (page_id,)).fetchall()
-        return {"page": page, "images": images, "links": links}
+        child_pages = conn.execute("""
+            SELECT id, title, source_url, breadcrumb, category
+            FROM elearn_pages WHERE parent_page_id=%s
+            ORDER BY title
+        """, (page_id,)).fetchall()
+        source_child_prefix = page["source_url"].rsplit("/", 1)[0] + "/%"
+        source_child_links = conn.execute("""
+            SELECT link_text, to_url AS source_url
+            FROM elearn_links
+            WHERE from_page_id=%s AND discovered_page_id IS NULL
+              AND regexp_replace(to_url, '^http:', 'https:') LIKE %s
+            ORDER BY link_text
+        """, (page_id, source_child_prefix)).fetchall()
+        return {
+            "page": page,
+            "images": images,
+            "links": links,
+            "child_pages": child_pages,
+            "source_child_links": source_child_links,
+        }
 
 @app.get("/api/components")
 def components():
