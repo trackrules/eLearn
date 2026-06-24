@@ -34,12 +34,14 @@ services:
       MEILI_MASTER_KEY: dev_master_key
       IMAGE_STORAGE_DIR: /app/storage/images
       PUBLIC_IMAGE_PATH: /storage/images
+      DISC_ASSET_DIR: /disc-assets
       CRAWL_RATE_SECONDS: "1.0"
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
       - crawler_storage:/app/storage
+      - "${DISC_ASSET_HOST_DIR:-./data/disc-assets}:/disc-assets:ro"
     depends_on:
       postgres:
         condition: service_healthy

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import html
+import gzip
 import re
 import xml.etree.ElementTree as ET
 
 
 FORBIDDEN_DECLARATIONS = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)", re.IGNORECASE)
 FORBIDDEN_TAGS = {"script", "object", "embed", "applet", "iframe", "activex", "vbscript"}
+FORBIDDEN_SVG_TAGS = FORBIDDEN_TAGS | {"foreignobject", "audio", "video"}
 HEADING_TAGS = {"bigtext1": "h2", "bigtext2": "h3", "title": "h2", "subtitle": "h3"}
 BLOCK_TAGS = {"text": "p", "note": "aside", "warning": "aside", "description": "p"}
 IMAGE_TAGS = {"jpgimage": "imageid", "svgimage": "imageid", "consvgimage": "conimageid"}
@@ -102,3 +104,35 @@ def render_xml(raw_xml: str) -> str:
         return content
 
     return '<article class="disc-content">' + render(root) + "</article>"
+
+
+def sanitize_svg_bytes(data: bytes, compressed: bool = False) -> bytes:
+    """Return inert SVG bytes, rejecting active or externally loaded content."""
+    if compressed:
+        try:
+            data = gzip.decompress(data)
+        except (OSError, EOFError) as exc:
+            raise UnsafeXmlError("invalid gzipped SVG") from exc
+    if len(data) > 16 * 1024 * 1024:
+        raise UnsafeXmlError("SVG exceeds the preview size limit")
+    try:
+        source = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            source = data.decode("windows-1252")
+        except UnicodeDecodeError as exc:
+            raise UnsafeXmlError("SVG is not valid text") from exc
+    root = parse_safe_xml(source)
+    if _local_name(root.tag) != "svg":
+        raise UnsafeXmlError("asset is not an SVG document")
+    for node in root.iter():
+        if _local_name(node.tag) in FORBIDDEN_SVG_TAGS:
+            raise UnsafeXmlError(f"forbidden SVG element: {_local_name(node.tag)}")
+        for name, value in list(node.attrib.items()):
+            local = _local_name(name)
+            value_lower = value.strip().lower()
+            if local.startswith("on") or "url(" in value_lower:
+                del node.attrib[name]
+            elif local in {"href", "src"} and not value_lower.startswith("#"):
+                del node.attrib[name]
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)

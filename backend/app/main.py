@@ -4,10 +4,12 @@ from fastapi.staticfiles import StaticFiles
 from .db import get_conn
 from .search import search_pages
 from .manual import multipla_manual_tree
+from .disc_api import router as disc_router
 
 app = FastAPI(title="Fiat Multipla eLearn MVP")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/storage", StaticFiles(directory="storage"), name="storage")
+app.include_router(disc_router)
 
 @app.get("/api/health")
 def health():
