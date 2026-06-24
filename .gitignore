@@ -3,4 +3,4 @@ __pycache__/
 .env
 storage/
 .DS_Store
-data/exports/*.jsonl
+data/exports/

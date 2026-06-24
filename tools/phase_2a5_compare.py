@@ -126,7 +126,7 @@ def asset_details(asset_id: str):
     path = Path(r"D:\image") / f"{asset_id}.image"
     if not path.is_file():
         return {"asset_id": asset_id, "path": str(path), "exists": False,
-                "byte_sha256": None, "asset_type": "unknown"}
+                "byte_size": None, "byte_sha256": None, "asset_type": "unknown"}
     data = path.read_bytes()
     if data.startswith(b"\xff\xd8\xff"):
         kind = "JPEG"
@@ -139,7 +139,7 @@ def asset_details(asset_id: str):
         kind = "SVG"
     else:
         kind = "unknown"
-    return {"asset_id": asset_id, "path": str(path), "exists": True,
+    return {"asset_id": asset_id, "path": str(path), "exists": True, "byte_size": len(data),
             "byte_sha256": hashlib.sha256(data).hexdigest(), "asset_type": kind}
 
 
@@ -192,6 +192,8 @@ def build_disc_manifest(staging: Path):
             "parent_element_id": e["parent_id"], "child_element_ids": sorted(children[e["id"]]),
             "section": sections.get(e["section_id"]), "element_code": (e.get("code") or "").strip(),
             "element_name": e["name"], "breadcrumb": trail(e["id"]), "orders": record["orders"],
+            "all_codep": record["all_codep"], "all_validity": record["all_validity"],
+            "all_production": record["all_production"],
             "xml_raw_content": raw, "normalized_text": normalize(text),
             "normalized_text_hash": digest_text(text), "full_text": record.get("full_text"),
             "element_applicability": element_apps[e["id"]], "xml_applicability": xml_apps[record["id"]],
@@ -213,7 +215,8 @@ def build_disc_manifest(staging: Path):
         "record_type": "element", "element_id": e["id"], "section_id": e["section_id"],
         "parent_element_id": e["parent_id"], "child_element_ids": sorted(children[e["id"]]),
         "element_name": e["name"], "element_code": (e.get("code") or "").strip(),
-        "orders": e["orders"], "breadcrumb": trail(e["id"]),
+        "orders": e["orders"], "all_codep": e["all_codep"], "all_validity": e["all_validity"],
+        "all_production": e["all_production"], "layout": e.get("layout"), "breadcrumb": trail(e["id"]),
         "element_applicability": element_apps[e["id"]],
     } for e in elements.values()]
     write_jsonl(EXPORTS / "disc_english_manifest.jsonl", [header, *element_rows, *rows])
