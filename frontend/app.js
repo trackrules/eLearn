@@ -414,7 +414,7 @@ function showError(error) {
 
 async function route() {
   setActiveNav();
-  const path = location.pathname;
+  const path = location.pathname.replace(/\/+$/, '') || '/';
   if (path === '/disc') return discLanding();
   if (path === '/disc/manual/fiat-multipla') return discManual();
   if (path.startsWith('/disc/elements/')) return discElement(path.split('/').filter(Boolean).pop());

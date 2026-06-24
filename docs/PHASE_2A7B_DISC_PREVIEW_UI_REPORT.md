@@ -15,6 +15,8 @@ No production cutover, schema migration, Phase 2B feature, clickable SVG hotspot
 
 Existing routes `/`, `/search`, `/components`, `/components/radiator-fan`, and `/elearn/:id` returned HTTP 200 after the change.
 
+The SPA router normalizes trailing slashes and checks the four `/disc` routes before production routes. Versioned JavaScript/CSS URLs plus `no-store` headers prevent a previously cached Phase 2A script from rendering the normal home view at `/disc`.
+
 ## API endpoints used
 
 The frontend Nginx service maps the internal `/disc-api/` prefix to the Phase 2A.7A backend `/disc/` routes. This avoids a collision between user-facing SPA routes and API routes with the same element/XML path shapes.
