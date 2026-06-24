@@ -2,6 +2,13 @@ const api = path => fetch('/api' + path).then(async response => {
   if (!response.ok) throw new Error((await response.text()) || response.statusText);
   return response.json();
 });
+const discApi = path => fetch('/disc-api' + path).then(async response => {
+  const body = await response.text();
+  let data;
+  try { data = body ? JSON.parse(body) : {}; } catch { data = { detail: body }; }
+  if (!response.ok) throw new Error(data?.error?.message || data?.detail || response.statusText);
+  return data;
+});
 
 const app = document.getElementById('app');
 const esc = value => (value ?? '').toString().replace(/[&<>"']/g, char => ({
@@ -17,7 +24,7 @@ function setTitle(title) {
 
 function setActiveNav() {
   const path = location.pathname;
-  const active = path.startsWith('/components') ? 'components' : path.startsWith('/search') ? 'search' : path.startsWith('/manual') ? 'manual' : path.startsWith('/vehicles') || path.startsWith('/elearn') ? 'vehicle' : '';
+  const active = path.startsWith('/disc') ? 'disc' : path.startsWith('/components') ? 'components' : path.startsWith('/search') ? 'search' : path.startsWith('/manual') ? 'manual' : path.startsWith('/vehicles') || path.startsWith('/elearn') ? 'vehicle' : '';
   document.querySelectorAll('[data-nav]').forEach(link => link.classList.toggle('active', link.dataset.nav === active));
 }
 
@@ -227,6 +234,178 @@ async function component(slug) {
     <section><div class="results-header"><div><h2>Related eLearn pages</h2><p class="muted">Matches are ordered by title, breadcrumb, and content relevance.</p></div><span class="count-badge">${number(data.pages.length)}</span></div><div class="results-list">${data.pages.length ? data.pages.map(page => pageCard(page, { images: page.images || [] })).join('') : '<div class="empty-state">No related pages found.</div>'}</div></section>`;
 }
 
+function discNotice() {
+  return `<div class="disc-notice" role="status"><strong>Disc Preview / Staged Source / Not Production</strong><span>This area reads the isolated original-disc staging data. Current web-backed workshop pages remain separate.</span></div>`;
+}
+
+function discBreadcrumb(items = []) {
+  return breadcrumb([{ label: 'Home', href: '/' }, { label: 'Disc Preview', href: '/disc' }, ...items]);
+}
+
+function applicabilitySummary(applicability) {
+  const labels = { production: 'Production', validity: 'Engine / validity', codep: 'Equipment' };
+  const rows = Object.entries(labels).map(([key, label]) => {
+    const values = applicability?.[key] || [];
+    return `<div class="applicability-row"><strong>${label}</strong><span>${values.length ? values.map(item => esc(item.name || item.code || item.id)).join(', ') : 'All / unrestricted'}</span></div>`;
+  });
+  return `<div class="applicability-list">${rows.join('')}</div>`;
+}
+
+function webMatchPanel(matches) {
+  if (!matches?.length) return '<p class="muted">No current web-backed page is linked to this staged record.</p>';
+  return `<ul class="disc-link-list">${matches.slice(0, 10).map(match => `<li><a href="${esc(match.web_page_ref)}">Open matched current web page #${esc(match.web_page_id)}</a><small>${esc(match.classification || match.match_method || '')}</small></li>`).join('')}</ul>`;
+}
+
+function discSearchResults(results) {
+  if (!results.length) return '<div class="empty-state"><h3>No disc records found</h3><p>Try an element title, procedure code, XML ID, or shorter phrase.</p></div>';
+  return results.map(result => `<article class="card result-card disc-result">
+    <div class="card-top"><div><h3 class="card-title"><a href="/disc/xml/${esc(result.source_xml_id)}">${esc(result.element_name)}</a></h3><div class="muted">${esc(result.section_name)} · XML ${esc(result.source_xml_id)}</div></div><span class="badge">Type ${esc(result.section_type)}</span></div>
+    ${result.element_code ? `<p><code>${esc(result.element_code)}</code></p>` : ''}<p class="card-summary">${esc(result.excerpt || '').slice(0, 360)}</p>
+    <div class="meta-row"><a href="/disc/elements/${esc(result.source_element_id)}">Element</a><span>·</span><a href="/disc/xml/${esc(result.source_xml_id)}">Content variant</a></div>
+  </article>`).join('');
+}
+
+async function discLanding() {
+  const health = await discApi('/health');
+  const initialQuery = new URLSearchParams(location.search).get('q') || '';
+  setTitle('Disc Preview');
+  app.innerHTML = `${discNotice()}${discBreadcrumb()}
+    <section class="hero disc-hero"><p class="eyebrow">Original Fiat Multipla eLearn disc</p><h1>Browse the staged source before production cutover.</h1><p class="lead">This read-only preview preserves the original XML, ordered hierarchy, applicability, cross-links, and native asset identities. The current web-backed pages continue to exist separately.</p>
+      <div class="header-actions"><a class="button" href="/disc/manual/fiat-multipla">Open manual tree</a><a class="button secondary" href="#disc-search">Search staged source</a></div></section>
+    <section class="stats-grid"><div class="stat"><strong>${number(health.counts.elements)}</strong><span>Disc elements</span></div><div class="stat"><strong>${number(health.counts.xml_records)}</strong><span>XML records</span></div><div class="stat"><strong>${number(health.counts.assets)}</strong><span>Asset records</span></div></section>
+    <section><div class="page-header compact"><p class="eyebrow">Validation shortcuts</p><h2>Example disc records</h2></div><div class="grid disc-shortcuts">
+      <a class="card" href="/disc/elements/2888504"><h3>Technical Data</h3><p class="muted">Engine and chassis version codes.</p></a>
+      <a class="card" href="/disc/elements/2891139"><h3>Procedure</h3><p class="muted">Scheduled service procedure content.</p></a>
+      <a class="card" href="/disc/elements/2888756"><h3>Electrical / Wiring</h3><p class="muted">Electrical supply description and references.</p></a>
+      <a class="card" href="/disc/elements/2888312"><h3>Fault Diagnosis</h3><p class="muted">Alarm diagnostic workflow.</p></a>
+    </div></section>
+    <section id="disc-search"><div class="page-header compact"><p class="eyebrow">Staged source search</p><h2>Search disc records</h2><p class="muted">Search by title, element code, XML ID, or normalized source text.</p></div>
+      <form class="search-form" id="disc-search-form" role="search"><input class="search-input" id="disc-search-query" value="${esc(initialQuery)}" placeholder="Try 5510CD, current generator, or an XML ID…" aria-label="Search staged disc source"><button class="button" type="submit">Search disc</button></form>
+      <div class="results-list" id="disc-search-results">${initialQuery ? '<div class="loading-state"><span class="spinner"></span>Searching staged source…</div>' : '<p class="muted">Enter a query to search the staged disc content.</p>'}</div></section>`;
+  const form = document.getElementById('disc-search-form');
+  const input = document.getElementById('disc-search-query');
+  const run = async () => {
+    const query = input.value.trim();
+    history.replaceState(null, '', query ? `/disc?q=${encodeURIComponent(query)}#disc-search` : '/disc#disc-search');
+    if (!query) { document.getElementById('disc-search-results').innerHTML = '<p class="muted">Enter a query to search the staged disc content.</p>'; return; }
+    document.getElementById('disc-search-results').innerHTML = '<div class="loading-state"><span class="spinner"></span>Searching staged source…</div>';
+    const data = await discApi('/search?q=' + encodeURIComponent(query) + '&limit=40');
+    document.getElementById('disc-search-results').innerHTML = `<p class="muted">${number(data.count)} results shown</p>${discSearchResults(data.results)}`;
+  };
+  form.addEventListener('submit', event => { event.preventDefault(); run().catch(showError); });
+  if (initialQuery) await run();
+}
+
+function discTreeNode(node) {
+  const label = `${node.code ? `<code>${esc(node.code)}</code> ` : ''}${esc(node.name)}`;
+  if (!node.children?.length) return `<a class="disc-tree-leaf" href="/disc/elements/${esc(node.element_id)}">${label}<small>${number(node.xml_count)} content variant${node.xml_count === 1 ? '' : 's'}</small></a>`;
+  return `<details class="disc-tree-node"><summary><span class="disc-tree-heading"><a href="/disc/elements/${esc(node.element_id)}">${label}</a><small>${number(node.children.length)} children · ${number(node.xml_count)} variants</small></span></summary><div class="disc-tree-children" data-lazy-element="${esc(node.element_id)}"></div></details>`;
+}
+
+function flattenDiscTree(node, section, output) {
+  output.push({ ...node, section });
+  (node.children || []).forEach(child => flattenDiscTree(child, section, output));
+}
+
+function bindDiscTreeLazy(nodeIndex) {
+  document.querySelectorAll('.disc-tree-node').forEach(details => {
+    details.querySelector(':scope > summary a')?.addEventListener('click', event => event.stopPropagation());
+    details.addEventListener('toggle', () => {
+      if (!details.open) return;
+      const container = details.querySelector(':scope > .disc-tree-children');
+      if (!container || container.dataset.loaded) return;
+      const node = nodeIndex.get(Number(container.dataset.lazyElement));
+      container.innerHTML = (node?.children || []).map(discTreeNode).join('');
+      container.dataset.loaded = 'true';
+      bindDiscTreeLazy(nodeIndex);
+    }, { once: true });
+  });
+}
+
+async function discManual() {
+  const data = await discApi('/manual/fiat-multipla/tree');
+  setTitle('Disc Manual Preview');
+  const allNodes = [];
+  const nodeIndex = new Map();
+  data.sections.forEach(section => {
+    if (section.root) flattenDiscTree(section.root, section.name, allNodes);
+  });
+  allNodes.forEach(node => nodeIndex.set(Number(node.element_id), node));
+  app.innerHTML = `${discNotice()}${discBreadcrumb([{ label: 'Manual tree' }])}
+    <header class="page-header compact"><p class="eyebrow">${number(allNodes.length)} staged navigation elements</p><h1>Fiat Multipla disc manual</h1><p class="lead">Expand the six original sections. Child nodes render only when opened so the full manual remains responsive.</p></header>
+    <div class="filter-bar"><input class="filter-input" id="disc-tree-filter" placeholder="Find a title or element code…" aria-label="Filter disc manual tree"></div><div id="disc-tree-filter-results"></div>
+    <div class="disc-section-list" id="disc-section-list">${data.sections.map(section => `<details class="disc-section"><summary><span><strong>${esc(section.name)}</strong><small>Section type ${esc(section.section_type)}</small></span></summary><div class="disc-section-body">${section.root ? discTreeNode(section.root) : '<p class="muted">Root element unavailable.</p>'}</div></details>`).join('')}</div>`;
+  bindDiscTreeLazy(nodeIndex);
+  const filter = document.getElementById('disc-tree-filter');
+  filter.addEventListener('input', () => {
+    const query = filter.value.trim().toLowerCase();
+    const results = query ? allNodes.filter(node => `${node.name} ${node.code || ''} ${node.element_id}`.toLowerCase().includes(query)).slice(0, 100) : [];
+    document.getElementById('disc-section-list').hidden = Boolean(query);
+    document.getElementById('disc-tree-filter-results').innerHTML = query ? `<p class="muted">${number(results.length)} result${results.length === 100 ? 's (first 100)' : results.length === 1 ? '' : 's'}</p><div class="disc-filter-results">${results.map(node => `<a class="disc-tree-leaf" href="/disc/elements/${esc(node.element_id)}">${node.code ? `<code>${esc(node.code)}</code> ` : ''}${esc(node.name)}<small>${esc(node.section)} · element ${esc(node.element_id)}</small></a>`).join('')}</div>` : '';
+  });
+}
+
+async function discElement(id) {
+  const data = await discApi('/elements/' + encodeURIComponent(id));
+  const element = data.element;
+  setTitle(`${element.name} · Disc Preview`);
+  app.innerHTML = `${discNotice()}${discBreadcrumb([{ label: 'Manual tree', href: '/disc/manual/fiat-multipla' }, { label: element.name }])}
+    <header class="page-header compact"><div class="meta-row"><span class="badge">Disc element ${esc(element.source_element_id)}</span><span class="badge">Section type ${esc(element.section_type)}</span></div><h1>${esc(element.name)}</h1>${element.code ? `<p class="lead"><code>${esc(element.code)}</code></p>` : ''}<p class="muted">${esc(element.section_name)} · staged release ${esc(data.release_key)}</p></header>
+    <div class="content-layout"><div class="content-main">
+      <section class="card disc-panel"><h2>Content variants <span class="count-badge">${number(data.xml_records.length)}</span></h2>${data.xml_records.length ? `<div class="disc-variant-list">${data.xml_records.map((row, index) => `<a href="/disc/xml/${esc(row.source_xml_id)}"><strong>Variant ${index + 1}</strong><span>XML ${esc(row.source_xml_id)}${row.orders != null ? ` · order ${esc(row.orders)}` : ''}</span></a>`).join('')}</div>` : '<p class="muted">This navigation element has no XML content variant.</p>'}</section>
+      <section class="card disc-panel"><h2>Applicability</h2>${applicabilitySummary(data.applicability)}</section>
+      <section class="card disc-panel"><h2>Matched current web page</h2>${webMatchPanel(data.web_matches)}</section>
+    </div><aside class="side-panel card"><h2>Navigation</h2>${data.parent_ref ? `<p><a href="${esc(data.parent_ref)}">← Parent element</a></p>` : '<p class="muted">Section root element</p>'}<h3>Children ${data.children.length ? `<span class="count-badge">${number(data.children.length)}</span>` : ''}</h3>${data.children.length ? `<ul class="subpage-list">${data.children.map(child => `<li><a href="${esc(child.element_ref)}">${child.code ? `<code>${esc(child.code)}</code> ` : ''}${esc(child.name)}</a></li>`).join('')}</ul>` : '<p class="muted">No child elements.</p>'}<hr><p class="source-id-list">Element ID <code>${esc(element.source_element_id)}</code><br>Section ID <code>${esc(element.source_section_id)}</code><br>Parent ID <code>${esc(element.parent_element_id)}</code></p></aside></div>`;
+}
+
+function bindDiscRenderedContent(data) {
+  const content = document.getElementById('disc-rendered-content');
+  if (!content) return;
+  const assets = new Map((data.assets || []).map(asset => [String(asset.source_asset_id), asset]));
+  content.querySelectorAll('.disc-asset').forEach(image => {
+    const id = String(image.dataset.assetId || '');
+    const asset = assets.get(id);
+    if (!asset?.exists_on_disc) {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'disc-asset-placeholder';
+      placeholder.textContent = `Missing disc asset #${id}`;
+      image.replaceWith(placeholder);
+    } else if (asset.detected_type === 'JPEG') {
+      image.src = `/disc-api/assets/${encodeURIComponent(id)}`;
+      image.alt = `Disc asset ${id}`;
+      image.loading = 'lazy';
+    } else {
+      const link = document.createElement('a');
+      link.className = 'native-svg-link';
+      link.href = `/disc-api/assets/${encodeURIComponent(id)}`;
+      link.textContent = `Native SVG asset available (#${id})`;
+      link.setAttribute('download', `${id}.image`);
+      image.replaceWith(link);
+    }
+  });
+  const links = new Map((data.links || []).filter(link => link.target_ref).map(link => [String(link.target_id), link.target_ref]));
+  content.querySelectorAll('.disc-link').forEach(link => {
+    const target = links.get(String(link.dataset.targetid || ''));
+    if (target) link.href = target;
+    else { link.removeAttribute('href'); link.classList.add('unresolved-disc-link'); }
+  });
+}
+
+async function discXml(id) {
+  const data = await discApi('/xml/' + encodeURIComponent(id));
+  const record = data.xml;
+  setTitle(`${record.element_name} · Disc XML`);
+  app.innerHTML = `${discNotice()}${discBreadcrumb([{ label: 'Manual tree', href: '/disc/manual/fiat-multipla' }, { label: record.element_name, href: data.element_ref }, { label: `XML ${record.source_xml_id}` }])}
+    <header class="page-header compact"><div class="meta-row"><span class="badge">XML ${esc(record.source_xml_id)}</span><span class="badge">Section type ${esc(record.section_type)}</span></div><h1>${esc(record.element_name)}</h1>${record.element_code ? `<p class="lead"><code>${esc(record.element_code)}</code></p>` : ''}<p class="muted">${esc(record.section_name)} · <a href="${esc(data.element_ref)}">Element ${esc(record.source_element_id)}</a></p></header>
+    <div class="content-layout"><div class="content-main">
+      <article class="card disc-rendered-card"><div class="disc-rendered-heading"><p class="eyebrow">Safely rendered staged XML</p><span>${number(data.assets.length)} assets · ${number(data.links.length)} internal links</span></div><div id="disc-rendered-content" class="disc-rendered-content">${data.rendered_html}</div></article>
+      <section class="card disc-panel"><h2>Assets <span class="count-badge">${number(data.assets.length)}</span></h2>${data.assets.length ? `<div class="disc-asset-list">${data.assets.map(asset => `<div class="disc-asset-row"><div><strong>Asset ${esc(asset.source_asset_id)}</strong><small>${esc(asset.detected_type)} · ${esc(asset.reference_kind)}</small></div>${!asset.exists_on_disc ? '<span class="missing-label">Missing on disc</span>' : asset.detected_type === 'JPEG' ? `<a href="/disc-api/assets/${esc(asset.source_asset_id)}" target="_blank">Open image</a>` : `<a href="/disc-api/assets/${esc(asset.source_asset_id)}" download>Native SVG asset available</a>`}</div>`).join('')}</div>` : '<p class="muted">No assets referenced.</p>'}</section>
+      <section class="card disc-panel"><h2>Internal disc links <span class="count-badge">${number(data.links.length)}</span></h2>${data.links.length ? `<ul class="disc-link-list">${data.links.map(link => `<li>${link.target_ref ? `<a href="${esc(link.target_ref)}">${esc(link.target_code || link.target_description || `Element ${link.target_id}`)}</a>` : `<span>${esc(link.target_code || link.target_description || `Target ${link.target_id}`)}</span>`}<small>${esc(link.link_kind)} · target ${esc(link.target_id)}</small></li>`).join('')}</ul>` : '<p class="muted">No internal links.</p>'}</section>
+      <details class="card raw-source-panel"><summary>Raw source / debug</summary><div><p class="source-id-list">XML SHA-256 <code>${esc(record.raw_xml_sha256)}</code><br>Normalized text SHA-256 <code>${esc(record.normalized_text_sha256)}</code></p><pre>${esc(record.raw_xml)}</pre></div></details>
+    </div><aside class="side-panel card"><h2>Applicability</h2>${applicabilitySummary(data.applicability)}<h2>Matched current web page</h2>${webMatchPanel(data.web_matches)}<hr><p class="source-id-list">XML ID <code>${esc(record.source_xml_id)}</code><br>Element ID <code>${esc(record.source_element_id)}</code></p></aside></div>`;
+  bindDiscRenderedContent(data);
+}
+
 function showError(error) {
   console.error(error);
   setTitle('Error');
@@ -236,6 +415,10 @@ function showError(error) {
 async function route() {
   setActiveNav();
   const path = location.pathname;
+  if (path === '/disc') return discLanding();
+  if (path === '/disc/manual/fiat-multipla') return discManual();
+  if (path.startsWith('/disc/elements/')) return discElement(path.split('/').filter(Boolean).pop());
+  if (path.startsWith('/disc/xml/')) return discXml(path.split('/').filter(Boolean).pop());
   if (path === '/') return home();
   if (path === '/vehicles/fiat-multipla') return vehicle();
   if (path === '/manual') return manual();

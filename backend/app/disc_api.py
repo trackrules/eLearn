@@ -146,11 +146,16 @@ def disc_element(element_id: int):
         xml_records = conn.execute("""SELECT source_xml_id,orders,normalized_text_sha256
           FROM disc_staging.disc_xml WHERE release_id=%s AND source_element_id=%s
           ORDER BY orders NULLS LAST,source_xml_id""", (release["id"], element_id)).fetchall()
+        web_matches = conn.execute("""SELECT web_page_id,source_xml_id,match_method,match_score,
+            classification,source_url FROM disc_staging.web_disc_match
+          WHERE release_id=%s AND source_element_id=%s ORDER BY match_score DESC NULLS LAST,web_page_id""",
+          (release["id"], element_id)).fetchall()
         return {
             "release_key": release["release_key"], "element": element,
             "parent_ref": f"/disc/elements/{element['parent_element_id']}" if element["parent_element_id"] else None,
             "children": [{**row, "element_ref": f"/disc/elements/{row['source_element_id']}"} for row in children],
             "xml_records": [{**row, "xml_ref": f"/disc/xml/{row['source_xml_id']}"} for row in xml_records],
+            "web_matches": [{**row, "web_page_ref": f"/elearn/{row['web_page_id']}"} for row in web_matches],
             "applicability": _applicability(conn, release["id"], "element", element_id),
         }
 
@@ -182,6 +187,10 @@ def disc_xml(xml_id: int):
             ON a.release_id=ca.release_id AND a.source_asset_id=ca.source_asset_id
           WHERE ca.release_id=%s AND ca.source_xml_id=%s ORDER BY ca.ordinal""",
           (release["id"], xml_id)).fetchall()
+        web_matches = conn.execute("""SELECT web_page_id,source_element_id,match_method,match_score,
+            classification,source_url FROM disc_staging.web_disc_match
+          WHERE release_id=%s AND source_xml_id=%s ORDER BY match_score DESC NULLS LAST,web_page_id""",
+          (release["id"], xml_id)).fetchall()
         return {
             "release_key": release["release_key"], "xml": record, "rendered_html": rendered,
             "element_ref": f"/disc/elements/{record['source_element_id']}",
@@ -189,6 +198,7 @@ def disc_xml(xml_id: int):
                 f"/disc/elements/{row['target_id']}" if row["link_kind"] == "resolved_element" else None
             )} for row in links],
             "assets": [{**row, "asset_ref": f"/disc/assets/{row['source_asset_id']}"} for row in assets],
+            "web_matches": [{**row, "web_page_ref": f"/elearn/{row['web_page_id']}"} for row in web_matches],
             "applicability": _applicability(conn, release["id"], "xml", xml_id),
         }
 
@@ -248,10 +258,11 @@ def disc_search(q: str = Query("", max_length=200), limit: int = Query(20, ge=1,
           JOIN disc_staging.disc_section s
             ON s.release_id=e.release_id AND s.source_section_id=e.source_section_id
           WHERE x.release_id=%s AND (e.name ILIKE %s OR e.code ILIKE %s
+            OR CAST(x.source_xml_id AS TEXT) ILIKE %s
             OR x.full_text ILIKE %s OR x.normalized_text ILIKE %s)
           ORDER BY CASE WHEN e.name ILIKE %s THEN 0 WHEN e.code ILIKE %s THEN 1 ELSE 2 END,
                    s.section_type,e.name,x.source_xml_id LIMIT %s
-        """, (release["id"], pattern, pattern, pattern, pattern, pattern, pattern, limit)).fetchall()
+        """, (release["id"], pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit)).fetchall()
         return {"query": query, "count": len(rows), "results": [{**row,
             "element_ref": f"/disc/elements/{row['source_element_id']}",
             "xml_ref": f"/disc/xml/{row['source_xml_id']}"} for row in rows]}
